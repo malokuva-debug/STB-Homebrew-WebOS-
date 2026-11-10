@@ -1,0 +1,22 @@
+# Copy this file into your fork of webosbrew/apps-repo under packages/
+# Replace OWNER/REPO with your GitHub repository before submitting.
+title: STB Player
+iconUri: https://raw.githubusercontent.com/OWNER/REPO/main/app/largeIcon.png
+manifestUrl: https://github.com/OWNER/REPO/releases/latest/download/com.ny0.stbplayer.manifest.json
+category: internet
+pool: main
+shortDescription: Stalker/Ministra portal player with low-buffer settings
+description: |
+  A Stalker / Ministra middleware STB player for webOS.
+
+  Enter your own portal URL and MAC address to browse and play your channels.
+  No content is included or provided by this app.
+
+  Features:
+  - Buffer profiles from ultra-low to stable
+  - Max resolution cap and live-edge snapping to keep delay low
+  - Stall watchdog with automatic retry
+  - Configurable STB model, serial, device ID, timezone and user agent
+  - Optional portal login
+
+  Uses a small local proxy service on the TV to send the headers Stalker portals require.

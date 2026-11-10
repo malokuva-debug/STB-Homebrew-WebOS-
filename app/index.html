@@ -1,0 +1,107 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>STB Player</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#000;color:#e8eef7;font:26px/1.3 sans-serif;overflow:hidden}
+video{position:fixed;top:0;left:0;width:100%;height:100%;background:#000}
+.scr{position:fixed;top:0;left:0;width:100%;height:100%;display:none;background:#101826;padding:48px 120px;overflow:auto}
+.scr.on{display:block}
+#main{background:none;padding:0;overflow:hidden}
+#panel{position:absolute;top:0;left:0;bottom:0;width:64%;display:-webkit-flex;display:flex;background:rgba(16,24,38,.9)}
+#panel.h{display:none}
+.col{overflow-y:auto;height:100%;padding:16px 0}
+#cats{width:34%;border-right:1px solid #2a3a55}#chs{-webkit-flex:1;flex:1}
+.f{padding:12px 20px;margin:4px 10px;border-radius:8px;border:3px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.f:focus{outline:0;border-color:#4da3ff;background:#1d3250}
+input.f{display:block;width:calc(100% - 20px);background:#0b111c;color:#fff;font:inherit;margin-bottom:14px}
+.go{background:#4da3ff;color:#101826;font-weight:bold;text-align:center;width:360px}
+.go:focus{background:#8cc4ff}
+h1{margin:0 0 6px;font-size:44px}.dim{color:#8fa3bf;margin:12px 10px 4px}.sub{color:#8fa3bf;margin:0 10px 24px}
+#t{position:fixed;bottom:40px;right:60px;background:#1d3250;padding:12px 24px;border-radius:8px;display:none;z-index:9}
+</style></head><body>
+<video id="v" autoplay></video>
+<div class="scr on" id="setup"><h1>STB Player</h1><p class="sub">Enter your portal and MAC address to start.</p>
+<div class="dim">Portal URL</div><input class="f" id="portal" placeholder="http://host:port/c/">
+<div class="dim">MAC address</div><input class="f" id="mac" placeholder="00:1A:79:00:00:00">
+<div class="f go" tabindex="0" onclick="connect()">Connect</div>
+<div class="f go" tabindex="0" onclick="openSet()" style="background:#1d3250;color:#e8eef7">Settings</div></div>
+<div class="scr" id="set"></div>
+<div class="scr" id="main"><div id="panel"><div class="col" id="cats"></div><div class="col" id="chs"></div></div></div>
+<div id="t"></div>
+<script>
+var D={portal:'',mac:'00:1A:79:',buf:'low',res:'auto',lat:6,stall:8,retries:3,viaproxy:0,model:'MAG250',sn:'',did:'',tz:'Europe/London',ua:'',login:'',pass:'',port:8899};
+var O={buf:['ultra','low','balanced','stable'],res:['auto','1080','720','480'],lat:[0,3,4,6,10],stall:[4,6,8,12,20],retries:[0,1,3,5,10],viaproxy:[0,1],model:['MAG250','MAG254','MAG322','MAG324'],port:[8899,8898,9000]};
+var L={buf:'Buffer profile (ultra = least delay)',res:'Max resolution',lat:'Snap to live edge when behind (s, 0 = off)',stall:'Reload if stalled for (s)',retries:'Auto-retries on failure',viaproxy:'Play stream through proxy (1 = yes)',model:'STB model',sn:'Serial number',did:'Device ID',tz:'Timezone',ua:'Custom user agent',login:'Portal login (optional)',pass:'Portal password (optional)',port:'Proxy port'};
+var B={ultra:[262144,500,2000],low:[524288,1000,4000],balanced:[1048576,2000,8000],stable:[3145728,5000,20000]};
+var S=JSON.parse(localStorage.getItem('s')||'{}'),k,V=document.getElementById('v'),API,TOK,G=[],C=[],F=[],R=0,CUR=-1,SC='setup',PREV='setup',tries=0,w=0,tt;
+for(k in D)if(S[k]===undefined)S[k]=D[k];
+function $(i){return document.getElementById(i)}
+function save(){localStorage.setItem('s',JSON.stringify(S))}
+function rnd(n){var s='';while(s.length<n)s+=Math.random().toString(16).slice(2).toUpperCase();return s.slice(0,n)}
+if(!S.sn)S.sn=rnd(13);if(!S.did)S.did=rnd(64);save();
+$('portal').value=S.portal;$('mac').value=S.mac;
+function msg(t){var e=$('t');clearTimeout(tt);e.textContent=t;e.style.display=t?'block':'none';tt=setTimeout(function(){e.style.display='none'},4000)}
+function show(n){SC=n;['setup','set','main'].forEach(function(i){$(i).className='scr'+(i==n?' on':'')});
+  if(n!='main'){V.pause();CUR=-1}var f=document.querySelector('.scr.on .f');if(f)f.focus()}
+function PX(){return 'http://127.0.0.1:'+S.port}
+function get(u){return new Promise(function(ok,no){var x=new XMLHttpRequest();x.open('GET',u);x.timeout=15000;
+  x.onload=function(){x.status<400?ok(x.responseText):no(new Error('Portal replied HTTP '+x.status))};
+  x.onerror=x.ontimeout=function(){no(new Error('Network error'))};x.send()})}
+function pu(u,tok){return PX()+'/p?u='+encodeURIComponent(u)+'&mac='+encodeURIComponent(S.mac)+'&tz='+encodeURIComponent(S.tz)+'&model='+S.model+(S.ua?'&ua='+encodeURIComponent(S.ua):'')+(tok?'&tok='+encodeURIComponent(tok):'')}
+function api(q,tok){var s='';for(var k in q)s+='&'+k+'='+encodeURIComponent(q[k]);
+  return get(pu(API+'?'+s.slice(1)+'&JsHttpRequest=1-xml',tok)).then(function(t){return JSON.parse(t).js})}
+function startProxy(){return new Promise(function(ok,no){
+  try{var b=new PalmServiceBridge();b.onservicecallback=function(){};b.call('luna://com.ny0.stbplayer.service/start','{}')}catch(e){}
+  var n=0;(function t(){get(PX()+'/ping').then(ok,function(){if(++n>8)no(new Error('Proxy service not running'));else setTimeout(t,500)})})()})}
+function bases(){var p=S.portal.trim().replace(/\/+$/,'');if(!/^https?:/.test(p))p='http://'+p;
+  if(/\.php$/.test(p))return [p];p=p.replace(/\/c$/,'');return [p+'/server/load.php',p+'/portal.php']}
+function hs(){var c=bases(),i=0;
+  function next(){if(i>=c.length)return Promise.reject(new Error('Handshake failed - check portal URL and MAC'));API=c[i++];
+    return api({type:'stb',action:'handshake',token:''}).then(function(j){if(!j||!j.token)throw 0;TOK=j.token;
+      return api({type:'stb',action:'get_profile',hd:1,ver:'ImageDescription: 0.2.18-r14-pub-250; ImageDate: Fri Jan 15 15:20:44 EET 2016; PORTAL version: 5.6.1; API Version: JS API version: 328; STB API version: 134; Player Engine version: 0x566',num_banks:2,sn:S.sn,stb_type:S.model,client_type:'STB',image_version:218,video_out:'hdmi',device_id:S.did,device_id2:S.did,signature:'',auth_second_step:1,hw_version:'1.7-BD-00',not_valid_token:0,api_signature:262,metrics:JSON.stringify({mac:S.mac,sn:S.sn,type:'STB'})},TOK)})
+      .then(function(){return S.login?api({type:'stb',action:'do_auth',login:S.login,password:S.pass,device_id:S.did,device_id2:S.did},TOK):0}).catch(next)}
+  return next()}
+function connect(){S.portal=$('portal').value;S.mac=$('mac').value.toUpperCase();save();msg('Connecting...');
+  startProxy().then(hs).then(function(){return Promise.all([api({type:'itv',action:'get_genres'},TOK),api({type:'itv',action:'get_all_channels'},TOK)])})
+  .then(function(r){G=[{id:'*',title:'All channels'}].concat(r[0]||[]);C=(r[1]&&r[1].data)||[];
+    C.sort(function(a,b){return a.number-b.number});msg(C.length+' channels');show('main');$('panel').className='';drawCats();pick('*')})
+  .catch(function(e){msg(e.message||'Connection failed')})}
+function drawCats(){var h=$('cats');h.innerHTML='';
+  G.forEach(function(g){var d=document.createElement('div');d.className='f';d.tabIndex=0;d.textContent=g.title;d.onclick=function(){pick(g.id)};h.appendChild(d)});
+  var d=document.createElement('div');d.className='f';d.tabIndex=0;d.textContent='Settings';d.onclick=openSet;h.appendChild(d);h.firstChild.focus()}
+function pick(id){F=C.filter(function(c){return id=='*'||String(c.tv_genre_id)==String(id)});R=0;$('chs').innerHTML='';more()}
+function more(){var h=$('chs'),e=Math.min(R+100,F.length);
+  for(;R<e;R++)(function(i){var d=document.createElement('div');d.className='f';d.tabIndex=0;d.textContent=(F[i].number||i+1)+'  '+F[i].name;d.onclick=function(){tries=0;play(i)};h.appendChild(d)})(R)}
+$('chs').addEventListener('focusin',function(e){if(R<F.length&&e.target.nextSibling===null)more()});
+function mo(){var b=B[S.buf],o={option:{bufferControl:{userBufferCtrl:true,preBufferByte:b[0],bufferMinLevel:b[1],bufferMaxLevel:b[2]}}};
+  if(S.res!='auto')o.option.adaptiveStreaming={maxWidth:Math.round(S.res*16/9),maxHeight:+S.res};return encodeURIComponent(JSON.stringify(o))}
+function src(u){var s=document.createElement('source');s.src=u;s.type=(/\.m3u8/.test(u)?'application/x-mpegURL':'video/mp4')+';mediaOption='+mo();
+  V.innerHTML='';V.appendChild(s);V.load();V.play()}
+function play(i){if(i<0||i>=F.length)return;CUR=i;w=0;var c=F[i];msg(c.name);$('panel').className='h';
+  api({type:'itv',action:'create_link',cmd:c.cmd,series:'',forced_storage:0,disable_ad:0,download:0,force_ch_link_check:0},TOK).then(function(j){
+    var u=((j&&j.cmd)||c.cmd).replace(/^(ffmpeg|auto|ffrt\d?)\s+/,'');src(S.viaproxy?pu(u):u)}).catch(fail)}
+function fail(){if(tries<S.retries){tries++;msg('Retrying ('+tries+'/'+S.retries+')');play(CUR)}else msg('Playback failed')}
+V.addEventListener('playing',function(){tries=0;w=0});V.addEventListener('error',function(){if(CUR>=0)fail()});
+setInterval(function(){if(CUR<0)return;
+  if(V.readyState<3){if(++w>S.stall){w=0;fail()}}else w=0;
+  if(S.lat>0&&V.buffered.length){var e=V.buffered.end(V.buffered.length-1);if(e-V.currentTime>S.lat)V.currentTime=e-0.4}},1000);
+function openSet(){PREV=SC;var h='<h1>Settings</h1><p class="sub">Back to return. Left/Right or OK changes a value.</p>';
+  for(var k in L)h+=O[k]?'<div class="f" tabindex="0" data-k="'+k+'" onclick="cyc(\''+k+'\',1)">'+L[k]+': <b>'+S[k]+'</b></div>'
+    :'<div class="dim">'+L[k]+'</div><input class="f" value="'+String(S[k]).replace(/"/g,'&quot;')+'" oninput="S.'+k+'=this.value;save()">';
+  $('set').innerHTML=h;show('set')}
+function cyc(k,d){var a=O[k],i=a.indexOf(S[k]);S[k]=a[(i+d+a.length)%a.length];save();document.querySelector('[data-k='+k+'] b').textContent=S[k]}
+function nav(k){var a=document.activeElement,l=document.querySelectorAll('.scr.on .f'),r=a.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,best=null,bd=1e9,v=k%2==0;
+  for(var i=0;i<l.length;i++){var e=l[i];if(e===a||!e.offsetWidth)continue;var q=e.getBoundingClientRect(),dx=q.left+q.width/2-cx,dy=q.top+q.height/2-cy;
+    if(k==40&&dy>5||k==38&&dy<-5||k==39&&dx>5||k==37&&dx<-5){var d=v?Math.abs(dy)+3*Math.abs(dx):Math.abs(dx)+3*Math.abs(dy);if(d<bd){bd=d;best=e}}}
+  if(best){best.focus();best.scrollIntoView(false)}}
+document.onkeydown=function(e){var k=e.keyCode,a=document.activeElement,inp=a&&a.tagName=='INPUT',hid=$('panel').className=='h';
+  if(k>=37&&k<=40){if(inp&&(k==37||k==39))return;e.preventDefault();
+    if(SC=='main'&&hid){if(k==38)play(CUR-1);else if(k==40)play(CUR+1);else{$('panel').className='';var f=$('chs').querySelector('.f');if(f)f.focus()}return}
+    if(SC=='set'&&(k==37||k==39)&&a.getAttribute('data-k')){cyc(a.getAttribute('data-k'),k==39?1:-1);return}
+    nav(k)}
+  else if(k==13){if(SC=='main'&&hid){$('panel').className='';var f=$('chs').querySelector('.f');if(f)f.focus()}else if(!inp&&a.click){a.click()}}
+  else if(k==427||k==33){play(CUR+1)}else if(k==428||k==34){play(CUR-1)}
+  else if(k==461||k==27||(k==8&&!inp)){e.preventDefault();
+    if(SC=='set')show(PREV);else if(SC=='main'){if(!hid&&CUR>=0)$('panel').className='h';else if(hid){$('panel').className='';var f=$('chs').querySelector('.f');if(f)f.focus()}else show('setup')}
+    else window.close()}};
+$('portal').focus();
+</script></body></html>
