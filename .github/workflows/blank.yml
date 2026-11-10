@@ -1,0 +1,37 @@
+name: Build IPK
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm i -g @webos-tools/cli
+      - run: mkdir dist && ares-package app com.ny0.stbplayer.service -o dist
+      - name: Generate Homebrew manifest
+        run: |
+          IPK=$(ls dist/*.ipk | head -n1); NAME=$(basename "$IPK")
+          ID=$(jq -r .id app/appinfo.json)
+          jq -n --arg id "$ID" --arg ver "$(jq -r .version app/appinfo.json)" \
+            --arg title "$(jq -r .title app/appinfo.json)" \
+            --arg icon "https://raw.githubusercontent.com/$REPO/$TAG/app/largeIcon.png" \
+            --arg src "https://github.com/$REPO" \
+            --arg url "https://github.com/$REPO/releases/download/$TAG/$NAME" \
+            --argjson size "$(stat -c%s "$IPK")" --arg sha "$(sha256sum "$IPK" | cut -d' ' -f1)" \
+            '{id:$id,version:$ver,type:"web",title:$title,appDescription:"Stalker/Ministra portal player with low-buffer settings",iconUri:$icon,sourceUrl:$src,rootRequired:false,ipkUrl:$url,ipkSize:$size,ipkHash:{sha256:$sha}}' \
+            > "dist/$ID.manifest.json"
+          cat "dist/$ID.manifest.json"
+      - uses: actions/upload-artifact@v4
+        with: { name: release-files, path: dist/* }
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with: { files: dist/* }
