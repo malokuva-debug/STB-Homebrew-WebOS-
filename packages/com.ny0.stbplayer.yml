@@ -1,8 +1,8 @@
 # Copy this file into your fork of webosbrew/apps-repo under packages/
 # Replace OWNER/REPO with your GitHub repository before submitting.
 title: STB Player
-iconUri: https://raw.githubusercontent.com/OWNER/REPO/main/app/largeIcon.png
-manifestUrl: https://github.com/OWNER/REPO/releases/latest/download/com.ny0.stbplayer.manifest.json
+iconUri: https://raw.githubusercontent.com/malokuva-debug/STB-Homebrew-WebOS-/main/app/largeIcon.png
+manifestUrl: https://github.com/malokuva-debug/STB-Homebrew-WebOS-/releases/latest/download/com.ny0.stbplayer.manifest.json
 category: internet
 pool: main
 shortDescription: Stalker/Ministra portal player with low-buffer settings
